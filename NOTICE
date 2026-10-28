@@ -1,0 +1,12 @@
+Galaxy Watch3 connector
+
+Connector sources, tests, scripts and documentation are provided under the MIT license.
+
+The following files are copied from PebbleOS and remain under Apache-2.0:
+
+  include/pbl/drivers/linux_adapter.h
+  adapter/conformance.c
+
+The Apache license is included at LICENSES/Apache-2.0.txt. Copyright and SPDX
+notices in those files are preserved. Samsung/Tizen libraries are loaded from
+the device at runtime and are not included in this distribution.

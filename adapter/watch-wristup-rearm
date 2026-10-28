@@ -1,0 +1,5 @@
+#!/bin/sh
+# Keep sensord's wrist-up detection on algorithm 1. sensord adaptively moves to algorithm 10 when
+# it sees few Samsung UI interactions after raises (Pebble owns the UI), and the hub then rejects
+# raises; a hub reset also drops the mode. Re-sending 1 restores detection.
+exec dbus-send --system --type=signal /Org/Tizen/System/SensorD org.tizen.system.sensord.algo int32:1
