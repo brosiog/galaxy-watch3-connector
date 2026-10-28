@@ -1,72 +1,62 @@
 # Galaxy Watch3 connector for PebbleOS
 
-PebbleOS runs on the Galaxy Watch3 (SM-R850) as an ordinary Linux process on top of Samsung's
-kernel and Tizen userspace. This connector is the part that talks to Samsung's side. It is a
-device adapter for the PebbleOS Linux port: it reads the accelerometer, heart-rate sensor and
-pedometer, drives the haptic motor, controls display power and the always-on clock, and keeps the
-sensor hub's FIFO from waking the processor.
+This connector gives the [PebbleOS Linux port](spec/adapter-protocol.md) access to Samsung
+Galaxy Watch3 hardware through the Tizen libraries already installed on the watch. It runs as
+a separate ARM32 process and exchanges protocol-v2 messages with PebbleOS over Unix datagram
+sockets. The OS can use either the AArch64 or ARM32 build.
 
-PebbleOS and the connector speak the protocol described in `spec/adapter-protocol.md` of the
-PebbleOS Linux port, over two Unix datagram sockets. The wire format is a single header,
-`include/pbl/drivers/linux_adapter.h`, copied from the PebbleOS tree.
+The connector implements accelerometer, heart-rate and step delivery, haptic commands,
+brightness and display-power control. A helper manages sensor-hub buffering while the display
+is off. PebbleOS owns UI, display timeouts and gesture policy; the connector executes those
+requests and reports device state.
 
-## Status
+## Status and requirements
 
-Experimental. The adapter builds and its logic is covered by host tests, but protocol version 2
-has not run on a watch yet. The list of hardware checks is in the protocol spec under "Before
-release". Battery life off the charger is not validated.
+Experimental source candidate. Host tests and ARM32 cross-builds pass. **Protocol v2 has not
+yet run on the watch**, and battery endurance, sensor accuracy, suspend behavior and display
+timing remain unverified for this release.
 
-It does not flash anything, write to a partition, or enable itself at boot. A reboot returns the
-watch to Samsung's software.
+The reference device is the **Galaxy Watch3 SM-R850 running Tizen 5.5.0.2**. Other models and
+Tizen versions need separate validation. Device testing needs SDB access and an account with
+permission to use Tizen's sensor and device APIs, `/dev/ssp_sensorhub`, the system D-Bus and wake
+alarms. This repository does not configure those permissions.
 
-## What is here
+Use a matching protocol-v2 PebbleOS build. Stop any old v1 adapter before starting this one.
+The connector does not flash partitions, install a service or change boot settings.
 
-| Path | What |
-| --- | --- |
-| `adapter/watch_device_bridge.c` | The adapter. ARM32, loads Tizen's libraries at run time. |
-| `adapter/watch_sensor_idle.c` | Helper that buffers the sensor hub FIFO while the screen is off. |
-| `adapter/watch_bridge_control.c` | Sends one protocol message to a running adapter, for debugging. |
-| `adapter/conformance.c` | Checks an adapter against the protocol. Runs on the watch. |
-| `adapter/test_*`, `adapter/run_adapter_tests.sh` | Unit tests that run on a Mac or Linux host. |
-| `adapter/watch-wristup-rearm` | Re-enables Samsung wrist detection after a sensor-hub reset. |
-| `include/pbl/drivers/linux_adapter.h` | The protocol header, from PebbleOS. |
-| `profile/galaxy_watch3.profile` | The device profile PebbleOS uses for this watch. |
-| `build.sh` | Builds the ARM32 binaries with `zig cc`. |
+## Build on a host
 
-Samsung's libraries are never copied into this repository. The adapter opens the ones already on
-the watch with `dlopen`.
+Install Zig and run from this repository. The candidate was built with Zig 0.17.0:
 
-## Build
-
-```
-ZIG=/path/to/zig sh build.sh      # binaries land in out/
+```sh
+ZIG=/path/to/zig sh build.sh
 ```
 
-The target is `arm-linux-gnueabi` with glibc 2.24, which matches Tizen 5.5.
+The build produces four programs in `out/`: `watch_device_bridge`, `watch_sensor_idle`,
+`watch_bridge_control` and `conformance`. The target is ARM32 Linux with glibc 2.24 and
+`/lib/ld-linux.so.3`, matching the reference device's Tizen userspace. The PebbleOS source tree
+and Tizen SDK are not needed to build the connector. Samsung libraries are loaded with `dlopen`
+on the watch and are excluded from this repository.
 
-## Test
+## Run host tests
 
+Use a C11 compiler with pthreads on macOS or Linux:
+
+```sh
+sh adapter/run_adapter_tests.sh
 ```
-sh adapter/run_adapter_tests.sh   # host tests, no watch needed
-```
 
-On the watch, with PebbleOS stopped and the adapter running:
+The tests simulate vendor APIs and cover sensor delivery, FIFO policy, haptic deadlines and
+control-tool argument handling. They need neither Zig nor a watch and do not establish hardware
+power consumption or timing.
 
-```
-out/conformance --dir /opt/usr/home/owner/share/pebble --full
-```
+## Run on a development watch
 
-## Requirements
+Build the matching PebbleOS Linux port separately. Copy the four programs from `out/` to a
+writable runtime directory using SDB. Also copy `adapter/watch-wristup-rearm` beside
+`watch_sensor_idle`, keeping the script's filename. Make the copied programs and script executable.
 
-A Galaxy Watch3 with developer mode on and a way to run code as the `owner` user over SDB. The
-runtime directory is `/opt/usr/home/owner/share/pebble`; set `PBL_RUNTIME_DIR` for both PebbleOS
-and the adapter to use another.
-
-## Run
-
-Copy the four programs from `out/` to the runtime directory using SDB, along with
-`adapter/watch-wristup-rearm`. The helper needs that script beside its executable. Both
-processes must use the same runtime directory as PebbleOS:
+On the watch, start the connector and helper:
 
 ```sh
 export PBL_RUNTIME_DIR=/opt/usr/home/owner/share/pebble
@@ -77,16 +67,43 @@ adapter_pid=$!
 fifo_pid=$!
 ```
 
-The numeric argument is the run duration in seconds (30 to 86400). Start the matching v2
-PebbleOS build after these processes. Stop them with `kill "$fifo_pid" "$adapter_pid"`.
-They do not install a service or change boot settings. Stop the old v1 adapter before starting
-this pair; its wire protocol is incompatible.
+The numeric argument is the run duration in seconds, from 30 to 86400. These commands run for
+20 minutes. Start PebbleOS with the same `PBL_RUNTIME_DIR`; both processes default to the path
+shown above. See [device profiles](spec/device-profile.md) for directory and input configuration.
 
-The device account needs access to Tizen's device and sensor APIs, `/dev/ssp_sensorhub`,
-the system D-Bus, and wake alarms. Permission failures must be resolved on the device before
-running a hardware test. This repository does not grant privileges or bypass device security.
+Stop the helper and connector with:
+
+```sh
+kill "$fifo_pid" "$adapter_pid"
+```
+
+For protocol checks, stop PebbleOS, leave the connector running and use the copied checker:
+
+```sh
+./conformance --dir "$PBL_RUNTIME_DIR" --full
+```
+
+The [protocol specification](spec/adapter-protocol.md#before-release) lists the remaining
+hardware release checks, including wake latency, suspend, haptics, sensor quality and recovery.
+
+## Source map
+
+| Path | Purpose |
+| --- | --- |
+| `adapter/watch_device_bridge.c` | Device adapter; loads Tizen's libraries at runtime. |
+| `adapter/watch_sensor_idle.c` | Sensor-hub FIFO policy helper. |
+| `adapter/watch_bridge_control.c` | Sends one protocol message for debugging. |
+| `adapter/conformance.c` | Protocol conformance checker. |
+| `adapter/test_*`, `adapter/run_adapter_tests.sh` | Host tests and their runner. |
+| `adapter/watch-wristup-rearm` | Restores wrist detection after a sensor-hub reset. |
+| `include/pbl/drivers/linux_adapter.h` | Shared wire-format header, copied from PebbleOS. |
+| `profile/galaxy_watch3.profile` | Reference device profile. |
+| `build.sh` | ARM32 cross-build script. |
+
+For another Linux watch, implement its vendor API calls behind the same protocol. Keep
+OS policy in PebbleOS and device-specific recovery in the adapter.
 
 ## License
 
-The connector uses [MIT](LICENSE). The shared PebbleOS protocol header and conformance checker
-retain Apache-2.0; see [NOTICE](NOTICE) and `LICENSES/Apache-2.0.txt`.
+The connector uses [MIT](LICENSE). The copied PebbleOS protocol header and conformance checker
+retain Apache-2.0; see [NOTICE](NOTICE) and [the Apache license](LICENSES/Apache-2.0.txt).
