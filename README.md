@@ -1,6 +1,6 @@
 # Galaxy Watch3 connector for PebbleOS
 
-This connector gives the [PebbleOS Linux port](spec/adapter-protocol.md) access to Samsung
+This connector gives the [PebbleOS Linux port](https://github.com/brosiog/pebbleos-linux) access to Samsung
 Galaxy Watch3 hardware through the Tizen libraries already installed on the watch. It runs as
 a separate ARM32 process and exchanges protocol-v2 messages with PebbleOS over Unix datagram
 sockets. The OS can use either the AArch64 or ARM32 build.
