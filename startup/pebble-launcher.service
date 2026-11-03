@@ -1,0 +1,13 @@
+[Unit]
+Description=Start the installed PebbleOS watch interface
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/dotnet --clr-path /opt/usr/home/owner/share/pebble-launcher /usr/share/dotnet.tizen/netcoreapp/System.Private.CoreLib.dll
+TimeoutStartSec=300
+TimeoutStopSec=15
+Restart=no
+
+[Install]
+WantedBy=default.target

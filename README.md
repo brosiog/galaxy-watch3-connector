@@ -107,3 +107,11 @@ OS policy in PebbleOS and device-specific recovery in the adapter.
 
 The connector uses [MIT](LICENSE). The copied PebbleOS protocol header and conformance checker
 retain Apache-2.0; see [NOTICE](NOTICE) and [the Apache license](LICENSES/Apache-2.0.txt).
+
+## Optional automatic startup
+
+An already configured SM-R850 development watch can start its installed PebbleOS
+runtime after reboot using the optional [startup hook](startup/README.md).
+The hook has its own build and install commands and is separate from the
+connector binaries. It requires the existing development runtime and helpers;
+it does not set up a stock watch.
