@@ -1,0 +1,71 @@
+#!/bin/sh
+set -eu
+umask 077
+launcher=/opt/usr/home/owner/share/pebble-launcher
+payload=/opt/usr/home/owner/share/pebble
+stage=/opt/usr/home/owner/share/tmp/rea-runtime-probe-20261024
+exec >>"$launcher/startup.log" 2>&1
+exec 9>"$launcher/launch.lock"
+lock_result=0
+flock -n 9 || lock_result=$?
+case "$lock_result" in
+    0) ;;
+    1) exit 0 ;;
+    *) exit "$lock_result" ;;
+esac
+printf '\nPEBBLE_STARTUP %s uptime=' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+cat /proc/uptime
+test "$(id -u)" = 0
+grep -q '^Model=SM-R850;' /etc/info.ini
+grep -q '^Build=R850XXU1DWK2;' /etc/info.ini
+test ! -e "$payload/enable-startup"
+test -x "$payload/pebbleos-pairing-debug"
+test -x "$stage/hci-ready-probe"
+test -x "$stage/watch-console-probe"
+test -r "$stage/relaunch_after_reboot.sh"
+
+live() {
+    for unit in pebble-pairing-review.service pebble-device-bridge-review.service \
+                pebble-os-switch-review.service pebble-sensor-idle-review.service \
+                pebble-ui-guard-review.service pebble-soak-review.service; do
+        systemctl is-active --quiet "$unit" || return 1
+    done
+    test -s "$payload/pebble-ui-active" &&
+    test "$(readlink "/proc/$(cat "$payload/pebble-ui-active")/exe")" = \
+        "$payload/pebbleos-pairing-debug"
+}
+
+if live; then
+    printf 'PEBBLE_ALREADY_RUNNING\n'
+    exit 0
+fi
+
+cleanup() {
+    result=$?
+    trap - 0
+    if [ "$result" -ne 0 ]; then
+        printf 'PEBBLE_STARTUP_FAILED rc=%s; restoring Samsung\n' "$result"
+        systemctl stop pebble-pairing-review.service \
+            pebble-device-bridge-review.service pebble-sensor-idle-review.service \
+            pebble-ui-guard-review.service pebble-os-switch-review.service \
+            pebble-soak-review.service || :
+        /usr/bin/app_launcher -s com.samsung.w-home || :
+    fi
+    exit "$result"
+}
+trap cleanup 0
+
+# Samsung must finish its display and radio startup before Pebble takes over.
+ready=0
+until [ -S /run/wayland-0 ] && "$stage/hci-ready-probe" --ready; do
+    ready=$((ready + 1))
+    [ "$ready" -lt 60 ] || exit 1
+    sleep 2
+done
+
+# Reuse the tested runtime, connector and saved flash/bond state already here.
+PBL_SESSION_SECONDS=0 sh "$stage/relaunch_after_reboot.sh"
+live
+printf 'PEBBLE_STARTUP_OK pid=%s\n' "$(cat "$payload/pebble-ui-active")"
+"$stage/watch-console-probe" 'app active' 'bt status' 2>&1 |
+    grep -E 'app name|Alive:|Connected:' || :

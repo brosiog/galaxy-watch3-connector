@@ -11,3 +11,5 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: CC=clang sh adapter/run_adapter_tests.sh
+      - run: python3 startup/test_startup.py
+      - run: python3 startup/test_runtime_sessions.py

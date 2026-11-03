@@ -1,0 +1,4 @@
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c '/usr/bin/dotnet --clr-path /opt/usr/home/owner/share/tmp/pebble-startup-install/installer /usr/share/dotnet.tizen/netcoreapp/System.Private.CoreLib.dll > /opt/usr/home/owner/share/tmp/pebble-startup-install/owner-install.log 2>&1'
+TimeoutStartSec=180

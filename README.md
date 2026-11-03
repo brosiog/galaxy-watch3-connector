@@ -67,7 +67,8 @@ adapter_pid=$!
 fifo_pid=$!
 ```
 
-The numeric argument is the run duration in seconds, from 30 to 86400. These commands run for
+The numeric argument is the run duration in seconds: `0` runs until stopped, and
+positive values from 30 to 86400 keep a bounded diagnostic session. These commands run for
 20 minutes. Start PebbleOS with the same `PBL_RUNTIME_DIR`; both processes default to the path
 shown above. See [device profiles](spec/device-profile.md) for directory and input configuration.
 
@@ -107,3 +108,11 @@ OS policy in PebbleOS and device-specific recovery in the adapter.
 
 The connector uses [MIT](LICENSE). The copied PebbleOS protocol header and conformance checker
 retain Apache-2.0; see [NOTICE](NOTICE) and [the Apache license](LICENSES/Apache-2.0.txt).
+
+## Optional automatic startup
+
+An already configured SM-R850 development watch can start its installed PebbleOS
+runtime after reboot using the optional [startup hook](startup/README.md).
+The hook has its own build and install commands and is separate from the
+connector binaries. It requires the existing development runtime and helpers;
+it does not set up a stock watch.
