@@ -1,0 +1,51 @@
+#!/bin/sh
+# Bounded read-only telemetry for an extended wear run.
+# No device state is modified; one line every two minutes.
+set -u
+seconds=${1:-86400}
+case "$seconds" in ''|*[!0-9]*) exit 64;; esac
+[ "$seconds" = 0 ] || { [ "$seconds" -ge 30 ] && [ "$seconds" -le 86400 ]; } || exit 64
+payload=/opt/usr/home/owner/share/pebble
+out=$payload/soak.log
+if [ -s "$out" ]; then
+    mv "$out" "$payload/soak-$(date '+%Y%m%dT%H%M%S')-$$.log"
+fi
+: > "$out"
+end=$(( $(cut -d. -f1 /proc/uptime) + seconds ))
+while :; do
+    now=$(cut -d. -f1 /proc/uptime)
+    [ "$seconds" = 0 ] || [ "$now" -lt "$end" ] || break
+    ts=$(date '+%Y-%m-%dT%H:%M:%S%z')
+    cap=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null)
+    volt=$(cat /sys/class/power_supply/battery/voltage_now 2>/dev/null)
+    cur=$(cat /sys/class/power_supply/battery/current_now 2>/dev/null)
+    status=$(cat /sys/class/power_supply/battery/status 2>/dev/null)
+    temp=$(cat /sys/class/power_supply/battery/temp 2>/dev/null)
+    fgcap=$(cat /sys/class/power_supply/sec-fuelgauge/capacity 2>/dev/null)
+    fgcur=$(cat /sys/class/power_supply/sec-fuelgauge/current_now 2>/dev/null)
+    ac=$(cat /sys/class/power_supply/ac/online 2>/dev/null)
+    usb=$(cat /sys/class/power_supply/usb/online 2>/dev/null)
+    wireless=$(cat /sys/class/power_supply/wireless/online 2>/dev/null)
+    panel=$(cat /sys/class/lcd/s6e36w4x01/lcd_power 2>/dev/null)
+    backlight=$(cat /sys/class/backlight/s6e36w4x01-bl/brightness 2>/dev/null)
+    bridge=$(cut -d' ' -f3-5 "$payload/device-bridge-state" 2>/dev/null)
+    bpid=$(systemctl show pebble-device-bridge-review.service -p ExecMainPID 2>/dev/null | cut -d= -f2)
+    bridge_alive=0
+    if [ -n "$bpid" ] && [ "$bpid" != 0 ] && [ -r "/proc/$bpid/exe" ]; then
+        bridge_alive=1
+    fi
+    pid=$(cat "$payload/pebble-ui-active" 2>/dev/null)
+    # A stale marker survives a crash (the UI only unlinks it on a clean
+    # exit), so only report the PID when the process still exists.
+    ui=-
+    rss=0
+    if [ -n "$pid" ] && [ -r "/proc/$pid/status" ]; then
+        ui=$pid
+        rss=$(sed -n 's/^VmRSS:[[:space:]]*\([0-9]*\).*/\1/p' "/proc/$pid/status")
+    fi
+    load=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null)
+    mem=$(sed -n 's/^MemAvailable:[[:space:]]*\([0-9]*\).*/\1/p' /proc/meminfo 2>/dev/null)
+    echo "$ts up=$now cap=$cap volt=$volt cur=$cur status=$status temp=$temp fgcap=$fgcap fgcur=$fgcur ac=$ac usb=$usb wireless=$wireless panel=$panel backlight=$backlight bridge=$bridge bridge_alive=$bridge_alive ui=$ui rss=$rss load=$load mem=$mem" >> "$out"
+    sleep 120
+done
+echo "$(date '+%Y-%m-%dT%H:%M:%S%z') up=$(cut -d. -f1 /proc/uptime) SOAK_END" >> "$out"

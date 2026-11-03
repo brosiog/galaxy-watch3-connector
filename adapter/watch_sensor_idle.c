@@ -193,12 +193,17 @@ static void stop(int signal) {
   s_stopped = 1;
 }
 
+#include "watch_session.h"
+
 int main(int argc, char **argv) {
   if (argc != 2)
     return 64;
-  char *end;
-  long duration = strtol(argv[1], &end, 10);
-  if (*end || duration < 30 || duration > 86400)
+  if (!strcmp(argv[1], "--session-modes")) {
+    puts(WATCH_SESSION_MODES);
+    return 0;
+  }
+  long duration;
+  if (!watch_session_parse(argv[1], &duration))
     return 64;
   setvbuf(stdout, NULL, _IOLBF, 0);
   if (pbl_adapter_runtime_dir(s_dir, sizeof(s_dir), NULL, GALAXY_RUNTIME_DIR))
@@ -234,7 +239,7 @@ int main(int argc, char **argv) {
                          {.fd = s_idle.alarm, .events = POLLIN}};
   printf("SENSOR_IDLE_READY duration=%ld interval_ms=%d flush_ms=%d\n", duration, BUFFER_MS,
          FLUSH_MS);
-  while (!s_stopped && seconds(CLOCK_BOOTTIME) < deadline) {
+  while (!s_stopped && watch_session_active(duration, seconds(CLOCK_BOOTTIME), deadline)) {
     if (update(current_policy(), false)) {
       result = 4;
       break;

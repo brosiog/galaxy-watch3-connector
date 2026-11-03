@@ -67,7 +67,8 @@ adapter_pid=$!
 fifo_pid=$!
 ```
 
-The numeric argument is the run duration in seconds, from 30 to 86400. These commands run for
+The numeric argument is the run duration in seconds: `0` runs until stopped, and
+positive values from 30 to 86400 keep a bounded diagnostic session. These commands run for
 20 minutes. Start PebbleOS with the same `PBL_RUNTIME_DIR`; both processes default to the path
 shown above. See [device profiles](spec/device-profile.md) for directory and input configuration.
 

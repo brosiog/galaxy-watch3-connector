@@ -1,0 +1,54 @@
+#!/bin/sh
+# Pause duplicate Samsung UI workloads only while the native Pebble UI is alive.
+# All pauses are runtime-only and are reversed on exit or by --restore.
+set -u
+p=/opt/usr/home/owner/share/pebble
+state=$p/primary-ui-paused
+restore() {
+  [ -f "$state" ] || return 0
+  while read -r pid start; do
+    case "$pid:$start" in *[!0-9:]*|:*) continue;; esac
+    current=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)
+    if [ "$current" = "$start" ]; then kill -CONT "$pid" 2>/dev/null || :; fi
+  done < "$state"
+  rm -f "$state"
+}
+if [ "${1:-}" = --restore ]; then restore; exit 0; fi
+seconds=${1:-86400}
+case "$seconds" in ''|*[!0-9]*) exit 64;; esac
+[ "$seconds" = 0 ] || { [ "$seconds" -ge 30 ] && [ "$seconds" -le 86400 ]; } || exit 64
+[ ! -e "$state" ] || exit 65
+umask 077
+: > "$state"
+trap restore 0
+trap 'exit 0' INT TERM
+end=$(( $(cut -d. -f1 /proc/uptime) + seconds ))
+ready=0
+while [ ! -s "$p/pebble-ui-active" ]; do
+  ready=$((ready + 1)); [ "$ready" -lt 30 ] || exit 66
+  sleep 1
+done
+while [ "$seconds" = 0 ] || [ "$(cut -d. -f1 /proc/uptime)" -lt "$end" ]; do
+  ui=$(cat "$p/pebble-ui-active" 2>/dev/null)
+  case "$ui" in ''|*[!0-9]*) break;; esac
+  [ "$(readlink "/proc/$ui/exe" 2>/dev/null)" = "$p/pebbleos-pairing-debug" ] || break
+  # Samsung Home/viewer also coordinate focus with the compositor. Pausing them
+  # prevents the ordinary Pebble window from returning after panel-off.
+  for pid in $(pgrep -f '/bin/watchface-loader( |$)' 2>/dev/null); do
+    exe=$(readlink "/proc/$pid/exe" 2>/dev/null)
+    app=$(tr '\000' '\n' < "/proc/$pid/cmdline" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')
+    case "$app" in
+      /usr/apps/com.samsung.watchface/bin/watchface-loader)
+        # Tizen can run an app in launchpad-loader with the app path as argv[0].
+        case "$exe" in "$app"|/usr/bin/launchpad-loader) ;; *) continue;; esac
+        status=$(awk '{print $3}' "/proc/$pid/stat" 2>/dev/null)
+        [ "$status" != T ] || continue
+        start=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)
+        if [ -n "$start" ] && kill -STOP "$pid"; then
+          printf '%s %s\n' "$pid" "$start" >> "$state"
+          printf 'PRIMARY_UI_PAUSED pid=%s app=%s exe=%s\n' "$pid" "$app" "$exe"
+        fi;;
+    esac
+  done
+  sleep 30
+done

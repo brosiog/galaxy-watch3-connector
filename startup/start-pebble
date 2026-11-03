@@ -64,7 +64,7 @@ until [ -S /run/wayland-0 ] && "$stage/hci-ready-probe" --ready; do
 done
 
 # Reuse the tested runtime, connector and saved flash/bond state already here.
-sh "$stage/relaunch_after_reboot.sh"
+PBL_SESSION_SECONDS=0 sh "$stage/relaunch_after_reboot.sh"
 live
 printf 'PEBBLE_STARTUP_OK pid=%s\n' "$(cat "$payload/pebble-ui-active")"
 "$stage/watch-console-probe" 'app active' 'bt status' 2>&1 |

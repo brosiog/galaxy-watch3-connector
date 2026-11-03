@@ -7,6 +7,8 @@ cleanup() {
     rm -f /run/user/5001/systemd/user/pebble-launcher-install.service
     rm -f "$stage/installer/libcoreclr.so" "$stage/install-worker.so" \
         "$stage/install-on-watch.sh"
+    rm -f "$stage/session/watch-device-bridge" "$stage/session/watch-sensor-idle" \
+        "$stage/session/watch-os-switch"
     systemctl --user daemon-reload
 }
 trap cleanup 0

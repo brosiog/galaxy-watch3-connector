@@ -45,6 +45,7 @@ elif name == "hci":
     state["probes"] = state.get("probes", 0) + 1
     rc = 0 if state["probes"] > state.get("not_ready", 0) else 1
 elif name == "relaunch":
+    state["session_seconds"] = os.environ.get("PBL_SESSION_SECONDS")
     rc = state.get("launch_rc", 0)
     if rc == 0 and not state.get("silent_failure"):
         state["active"] = state["required"][:]
@@ -152,6 +153,7 @@ class StartupTest(unittest.TestCase):
         self.assertIn("PEBBLE_STARTUP_OK pid=1234", self.run_launcher())
         self.assertEqual(len(self.events("relaunch")), 1)
         self.assertEqual(self.state["active"], self.state["required"])
+        self.assertEqual(self.state["session_seconds"], "0")
 
     def test_delayed_radio_readiness(self):
         self.state["not_ready"] = 4

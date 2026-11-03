@@ -27,6 +27,7 @@ run() {
 }
 
 run test_watch_haptic_deadline
+run test_watch_session
 run test_watch_sensor_idle_policy
 run test_watch_sensor_bridge
 "$cc" -std=gnu11 -Wall -Wextra -Werror -I"$inc" \

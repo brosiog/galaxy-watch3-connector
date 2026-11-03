@@ -768,11 +768,17 @@ static int wake_alarm_ready(void *channel, unsigned condition, void *data) {
   return 1;
 }
 
+#include "watch_session.h"
+
 int main(int argc, char **argv) {
   setvbuf(stdout, NULL, _IOLBF, 0);
-  int seconds = argc == 2 ? atoi(argv[1]) : 1200;
-  if (seconds < 30 || seconds > 86400)
-    return 1;
+  if (argc == 2 && !strcmp(argv[1], "--session-modes")) {
+    puts(WATCH_SESSION_MODES);
+    return 0;
+  }
+  long seconds = 1200;
+  if (argc > 2 || (argc == 2 && !watch_session_parse(argv[1], &seconds)))
+    return 64;
   void *device_api = dlopen("libcapi-system-device.so.0", RTLD_NOW);
   void *sensor_api = dlopen("libcapi-system-sensor.so.0", RTLD_NOW);
   void *glib = dlopen("libglib-2.0.so.0", RTLD_NOW);
@@ -941,13 +947,13 @@ int main(int argc, char **argv) {
     goto cleanup;
   }
   subscribe_lcd_signals();
-  printf("BRIDGE_READY duration=%d ambient_clock=%d\n", seconds, ambient_clock);
+  printf("BRIDGE_READY duration=%ld ambient_clock=%d\n", seconds, ambient_clock);
   send_ready();
   int64_t deadline = monotonic_seconds() + seconds;
   bool light_running = light_rc == 0;
   // Our own display transitions echo back as LCD signals; ignore them for a moment after each.
   uint64_t transition_ms = 0;
-  while (!stopped && monotonic_seconds() < deadline) {
+  while (!stopped && watch_session_active(seconds, monotonic_seconds(), deadline)) {
     iterate(NULL, true);
     if (s_trace.fd >= 0 && trace_clock() >= s_trace.deadline)
       trace_stop("deadline");

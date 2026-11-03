@@ -7,8 +7,9 @@ between Samsung and PebbleOS during the session.
 
 This is specific to the owner's **SM-R850, R850XXU1DWK2** and its existing
 PebbleOS installation. It uses a persistent user service in writable app data;
-the Samsung boot image and system libraries stay unchanged. It retains the
-installed review stack's **24-hour session limits** and runs once per boot.
+the Samsung boot image and system libraries stay unchanged. Sessions run until
+the owner exits, the watch powers off, or a service fails. The startup hook runs
+once per boot; there is no daily session expiry.
 
 ## Install or update
 
@@ -16,20 +17,30 @@ From this directory, with authorized SDB connected, Zig available, and the
 existing runtime installed:
 
 ```sh
-PBL_TARGET=WATCH_IP:26101 ZIG=/path/to/zig SDB=/path/to/sdb sh install.sh
+PEBBLEOS_SOURCE=/path/to/matching/PebbleOS ZIG=/path/to/zig sh build-session.sh
+PBL_TARGET=WATCH_IP:26101 SESSION_BINARIES="$PWD/build/session" \
+    ZIG=/path/to/zig SDB=/path/to/sdb sh install.sh
 ```
 
 The installer builds two small ARM32 launcher libraries once, installs them with
 the fixed startup script, starts the launcher, and enables the owner service.
-It does not build PebbleOS. Repeating installation preserves a backup of the
-previous launcher files and service definition.
+It does not build PebbleOS. The session build updates the adapter, sensor helper
+and button listener to accept `0` as unlimited. For a custom development adapter,
+set `SESSION_SOURCE_DIR` to its matching helper sources when building.
+
+The installer checks each helper's `--session-modes` response before stopping
+anything. It then stops the old session cleanly, saves its paired flash file and
+runtime files, installs the helpers and launch scripts, and starts the unlimited
+session. Later installs can omit `SESSION_BINARIES` when the installed helpers
+already report `zero=unlimited`. Previous files are kept in a private sibling
+backup directory.
 
 This is an optional hook for an already configured development installation,
 not an installer for a stock watch. It requires the existing root-managed
-runtime under `/opt/usr/home/owner/share/pebble` and the tested relaunch script,
-radio probe and console helper under
-`/opt/usr/home/owner/share/tmp/rea-runtime-probe-20261024`. These development
-runtime files are not shipped in this directory. Installation itself uses a
+runtime under `/opt/usr/home/owner/share/pebble` and the existing radio, console,
+sensor-hub and wrist-recovery helpers under
+`/opt/usr/home/owner/share/tmp/rea-runtime-probe-20261024`. The runtime executable
+and those development probes are not shipped in this directory. Installation uses a
 temporary owner service and removes its setup bootstrap afterward.
 
 ## How it works
@@ -46,6 +57,13 @@ uses the existing relaunch script, saved flash file and paired phone state.
 It verifies all six runtime services and the UI executable. A concurrent request
 exits without starting a second stack. A valid running stack is left running.
 A failed launch stops its runtime services and asks Samsung's home app to open.
+
+`PBL_SESSION_SECONDS=0` reaches every session component: the OS, hardware adapter,
+sensor policy, UI guard, telemetry and return-button listener. The listener also
+passes unlimited mode to sessions launched by holding the buttons in Samsung.
+Positive durations of 30–86,400 seconds remain available for explicit diagnostic
+runs. Haptic, recovery, readiness and sensor-trace deadlines retain their own
+limits.
 
 Files are stored in `/opt/usr/home/owner/share/pebble-launcher`; their owner is
 root. The enclosing app-data location and user service configuration remain
@@ -77,6 +95,7 @@ is `pebble-launcher/startup.log` and is readable through the project's root work
 
 ```sh
 python3 test_startup.py
+python3 test_runtime_sessions.py
 ZIG=/path/to/zig sh build.sh
 ```
 
@@ -89,6 +108,12 @@ installation logs, failed installation/restart handling, and removal of the
 temporary root bootstrap. Tests run against a temporary
 filesystem and mocked device commands; they do not operate the watch.
 
+Four additional shell tests advance the helpers' clocks past one day and verify
+that unlimited telemetry/UI-guard sessions continue until signalled, while bounded
+runs still expire and restore paused UI state. The adapter host suite tests the
+native duration parser and deadline predicate at the 24-hour boundary and at
+one year uptime.
+
 On November 3, 2026, the permanent user service successfully ran on the watch.
 After enabling it and rebooting, the owner confirmed PebbleOS appeared without
 any Mac launch command. The runtime executable is the existing installed build,
@@ -100,3 +125,10 @@ The boot log records startup at 33.59 seconds uptime and a connected phone.
 The owner also confirmed the return to Samsung, and the runtime logged the
 two-button hold and exited with status zero. The final standalone installer
 was then exercised against that saved installation.
+
+The unlimited update was installed and the live service definitions confirmed
+`-t 0` for PebbleOS and duration `0` for every helper, with all six services active
+and the saved phone connected. The existing PebbleOS executable and system-library
+hashes stayed unchanged. The rebuilt listener passed its simulated global-key-state
+test on the watch. Clock-advanced tests cover the old daily boundary; a real
+24-hour unlimited soak has not yet completed.
